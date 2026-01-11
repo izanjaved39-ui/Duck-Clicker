@@ -2,13 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Duck Clicker</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0f172a">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-
+<meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 body{margin:0;font-family:system-ui,Arial;background:#0f172a;color:#e5e7eb;overflow-x:hidden}
 .app{max-width:900px;margin:auto;padding:10px}
@@ -42,7 +41,7 @@ body{margin:0;font-family:system-ui,Arial;background:#0f172a;color:#e5e7eb;overf
 <body>
 <div class="app">
   <div class="header">
-    <div class="duck" id="duck">🦆</div>
+    <div class="duck" id="duck"></div>
     <div class="stats">
       <span>Ducks: <span id="ducks">0</span></span>
       <span>DPS: <span id="dps">0</span></span>
@@ -81,14 +80,56 @@ body{margin:0;font-family:system-ui,Arial;background:#0f172a;color:#e5e7eb;overf
 </div>
 
 <script>
-// Your full Duck Clicker JS goes here (the code you already gave me, untouched)
-// ...
-// Service Worker registration for PWA install
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js')
-    .then(()=>console.log('Service Worker registered!'))
-    .catch(e=>console.error('SW registration failed', e));
-}
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js')}
+
+const saveKey='duck-clicker-v7'
+let s=JSON.parse(localStorage.getItem(saveKey))||{ducks:0,dps:0,dpc:1,multi:1,rebirths:0,dpsUp:[],dpcUp:[],quests:{},ach:{},clicks:0,totalDucks:0}
+const dpsAdds=[1,2,4,7,12,20,35,60,100,170]
+const dpcAdds=[1,1,2,3,5,8,13,21,34,55]
+let dpsMode=1,dpcMode=1
+const duck=document.getElementById('duck'),ducksEl=document.getElementById('ducks'),dpsEl=document.getElementById('dps'),multiEl=document.getElementById('multi'),notice=document.getElementById('notice')
+const dpsShop=document.getElementById('dpsShop'),dpcShop=document.getElementById('dpcShop'),rebirthBtn=document.getElementById('rebirth')
+const questList=document.getElementById('questList'),achList=document.getElementById('achList'),statsBox=document.getElementById('statsBox')
+const dpsModeVal=document.getElementById('dpsModeVal'),dpcModeVal=document.getElementById('dpcModeVal')
+
+const quests=[{id:'q1',t:'Reach 1000 ducks',req:()=>s.totalDucks>=1000,m:1.15},{id:'q2',t:'Reach 10000 ducks',req:()=>s.totalDucks>=10000,m:1.25},{id:'q3',t:'Reach 50000 ducks',req:()=>s.totalDucks>=50000,m:1.4}]
+const achs=[{id:'a1',t:'Click 50 times',req:()=>s.clicks>=50},{id:'a2',t:'Buy 10 upgrades',req:()=>[...s.dpsUp,...s.dpcUp].reduce((a,b)=>a+(b||0),0)>=10},{id:'a3',t:'Rebirth once',req:()=>s.rebirths>=1}]
+
+function save(){localStorage.setItem(saveKey,JSON.stringify(s))}
+function cost(base,lvl){return Math.floor(base*Math.pow(1.32,lvl))}
+function buildShop(){dpsShop.innerHTML='';dpcShop.innerHTML=''
+dpsAdds.forEach((v,i)=>{const lvl=s.dpsUp[i]||0,c=cost(40*(i+1),lvl)*dpsMode,can=s.ducks>=c; dpsShop.innerHTML+=`<div class=item><span>+${v}/s</span><span></span><span class="price ${can?'':'disabled'}" data-i="${i}" data-t="dps">${c}</span></div>`})
+dpcAdds.forEach((v,i)=>{const lvl=s.dpcUp[i]||0,c=cost(50*(i+1),lvl)*dpcMode,can=s.ducks>=c; dpcShop.innerHTML+=`<div class=item><span>+${v}/c</span><span></span><span class="price ${can?'':'disabled'}" data-i="${i}" data-t="dpc">${c}</span></div>`})}
+
+function buy(type,i){let mode=type==='dps'?dpsMode:dpcMode,adds=type==='dps'?dpsAdds:dpcAdds,base=type==='dps'?40:50,bought=0;while(true){const lvl=(type==='dps'?s.dpsUp:s.dpcUp)[i]||0,c=cost(base*(i+1),lvl);if(s.ducks<c)break;if(mode!=='max'&&bought>=mode)break;s.ducks-=c;if(type==='dps'){s.dps+=adds[i]; s.dpsUp[i]=lvl+1}else{s.dpc+=adds[i]; s.dpcUp[i]=lvl+1}bought++}if(bought>0){save();render()}}
+
+duck.onclick=()=>{s.ducks+=s.dpc*s.multi;s.clicks++;s.totalDucks+=s.dpc*s.multi;duck.classList.add('animate');setTimeout(()=>duck.classList.remove('animate'),100);render()}
+setInterval(()=>{s.ducks+=s.dps*s.multi;s.totalDucks+=s.dps*s.multi;render()},1000)
+
+function flash(t){let span=document.createElement('div');span.className='chaos';span.textContent=t;document.body.appendChild(span);setTimeout(()=>document.body.removeChild(span),2000)}
+rebirthBtn.onclick=()=>{const req=[10000,150000,500000,1500000][s.rebirths]||5000000;if(s.ducks<req){flash('Not enough ducks to rebirth');return}s.ducks=0;s.dps=0;s.dpc=1;s.dpsUp=[];s.dpcUp=[];s.rebirths++;flash('REBIRTH SUCCESSFUL!');save();render()}
+
+function checkQuests(){quests.forEach(q=>{if(!s.quests[q.id]&&q.req()){s.quests[q.id]=true;s.multi*=q.m;flash('Quest completed!')}})}
+function checkAch(){achs.forEach(a=>{if(!s.ach[a.id]&&a.req()){s.ach[a.id]=true;flash('Achievement unlocked!')}})}
+function renderLists(){questList.innerHTML=quests.map(q=>`<div class="${s.quests[q.id]?'done':''}">${q.t} (${q.m}x)</div>`).join('');achList.innerHTML=achs.map(a=>`<div class="${s.ach[a.id]?'done':''}">${a.t}</div>`).join('');statsBox.innerHTML=`<div>Total Ducks: ${Math.floor(s.totalDucks)}</div><div>Rebirths: ${s.rebirths}</div><div>Multiplier: x${s.multi.toFixed(2)}</div>`}
+
+function render(){ducksEl.textContent=Math.floor(s.ducks);dpsEl.textContent=s.dps;multiEl.textContent=s.multi.toFixed(2);buildShop();checkQuests();checkAch();renderLists();rebirthBtn.textContent=`REBIRTH (${([10000,150000,500000,1500000][s.rebirths]||5000000).toLocaleString()})`}
+
+// Tabs
+document.querySelectorAll('.tab').forEach(tab=>{tab.onclick=()=>{document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));tab.classList.add('active');document.querySelectorAll('.view').forEach(v=>v.style.display='none');document.getElementById(tab.dataset.tab).style.display='block'}})
+
+// price clicks
+document.body.addEventListener('click',e=>{if(e.target.classList.contains('price'))buy(e.target.dataset.t,Number(e.target.dataset.i))})
+
+// dropdown menus
+function setupMenu(btn,menu,setter,valEl){btn.onclick=e=>{e.stopPropagation();menu.style.display=menu.style.display==='block'?'none':'block'};menu.querySelectorAll('div').forEach(d=>{d.onclick=e=>{e.stopPropagation();setter(d.dataset.v==='max'?'max':Number(d.dataset.v));valEl.textContent=d.textContent;menu.style.display='none'}})}
+setupMenu(document.getElementById('dpsBtn'),document.getElementById('dpsMenu'),v=>dpsMode=v,dpsModeVal)
+setupMenu(document.getElementById('dpcBtn'),document.getElementById('dpcMenu'),v=>dpcMode=v,dpcModeVal)
+
+// Chaos Event and mini challenges
+setInterval(()=>{if(Math.random()<0.1){const bonus=Math.floor(Math.random()*500+100);s.ducks+=bonus;s.totalDucks+=bonus;flash(`Chaos event! +${bonus} ducks!`)}if(Math.random()<0.05){const target=50;if(s.ducks>=target){flash('Mini Challenge: Click fast! +100 bonus');s.ducks+=100;s.totalDucks+=100}}save();render()},5000)
+
+render()
 </script>
 </body>
 </html>
